@@ -1,0 +1,17 @@
+node_modules/
+build/
+.npm-cache/
+.dist.ro.backup/
+.node_modules.ro.backup/
+.env
+.claude/
+.codex
+*.log
+*.tgz
+
+# Local OCR fixtures and generated outputs
+*.pdf
+*.docx
+/output.md
+/images/
+/CONTRIBUATION_AI_AERONAUTIQUE.md

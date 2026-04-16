@@ -1,0 +1,40 @@
+{
+  "name": "mistral-ocr",
+  "version": "1.0.0",
+  "description": "PDF to Markdown and DOCX conversion powered by Mistral OCR.",
+  "type": "module",
+  "bin": {
+    "mistral-ocr": "./build/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/index.js"
+    }
+  },
+  "types": "./build/index.d.ts",
+  "files": [
+    "build",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "rm -rf build && tsc -p tsconfig.json",
+    "pack:dry-run": "npm pack --dry-run --cache ./.npm-cache",
+    "start": "node build/cli.js",
+    "test": "npm run build",
+    "verify": "npm test && npm run pack:dry-run"
+  },
+  "dependencies": {
+    "@mistralai/mistralai": "^1.15.1",
+    "docx": "^9.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "tsx": "^4.7.2",
+    "typescript": "^5.4.5"
+  }
+}
