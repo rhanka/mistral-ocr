@@ -4,7 +4,7 @@
   "description": "PDF to Markdown and DOCX conversion powered by Mistral OCR.",
   "type": "module",
   "bin": {
-    "mistral-ocr": "./build/cli.js"
+    "mistral-ocr": "build/cli.js"
   },
   "exports": {
     ".": {
@@ -50,5 +50,13 @@
     "document-ai",
     "scanned-pdf"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rhanka/mistral-ocr.git"
+  },
+  "homepage": "https://github.com/rhanka/mistral-ocr#readme",
+  "bugs": {
+    "url": "https://github.com/rhanka/mistral-ocr/issues"
+  }
 }
