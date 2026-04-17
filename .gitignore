@@ -15,3 +15,6 @@ build/
 /output.md
 /images/
 /CONTRIBUATION_AI_AERONAUTIQUE.md
+
+# Playwright MCP local snapshots
+.playwright-mcp/
