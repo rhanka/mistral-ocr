@@ -1,17 +1,17 @@
-name: CI
+name: TypeScript CI
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: ["main", "master"]
+    tags: ["v*"]
   pull_request:
+    branches: ["main", "master"]
 
 permissions:
   contents: read
 
 jobs:
-  npm:
+  test:
     name: Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
 
@@ -23,8 +23,7 @@ jobs:
           - 22
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -40,3 +39,120 @@ jobs:
 
       - name: Validate package contents
         run: npm run pack:dry-run
+
+  smoke-test:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install, build, and pack
+        run: |
+          npm ci
+          npm run build
+          TARBALL=$(npm pack 2>/dev/null | tail -1)
+          echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
+
+      - name: Install from tarball in clean directory
+        run: |
+          mkdir /tmp/mistral-ocr-smoke
+          cd /tmp/mistral-ocr-smoke
+          npm init -y --silent
+          npm install "${{ github.workspace }}/${{ env.TARBALL }}"
+
+      - name: Verify CLI from installed package
+        run: |
+          cd /tmp/mistral-ocr-smoke
+          npx mistral-ocr --help | grep -q "Usage:"
+
+      - name: Verify library exports
+        run: |
+          cd /tmp/mistral-ocr-smoke
+          node --input-type=module <<'EOF'
+          const mod = await import("mistral-ocr");
+          const expected = [
+            "convertPdf",
+            "markdownToDocx",
+            "createMistralClient",
+            "buildMarkdownFromOcrResponse",
+            "extractImagesFromOcrResponse",
+            "writeExtractedImages",
+          ];
+
+          for (const key of expected) {
+            if (!(key in mod)) {
+              throw new Error(`Missing export: ${key}`);
+            }
+          }
+
+          console.log("Installed package exports verified");
+          EOF
+
+  publish:
+    needs: [test, smoke-test]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate before publish
+        run: npm run verify
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            npm publish --access public
+          else
+            npm publish --access public --provenance
+          fi
+
+  post-publish-check:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Wait for npm propagation
+        run: sleep 30
+
+      - name: Install from npm
+        run: |
+          mkdir /tmp/mistral-ocr-post-publish
+          cd /tmp/mistral-ocr-post-publish
+          npm init -y --silent
+          npm install mistral-ocr@latest
+
+      - name: Verify installed package
+        run: |
+          cd /tmp/mistral-ocr-post-publish
+          npx mistral-ocr --help | grep -q "Usage:"
+          node --input-type=module <<'EOF'
+          const mod = await import("mistral-ocr");
+          if (typeof mod.convertPdf !== "function") {
+            throw new Error("convertPdf export missing");
+          }
+          console.log("Post-publish package verification passed");
+          EOF

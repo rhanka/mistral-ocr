@@ -1,6 +1,6 @@
 {
   "name": "mistral-ocr",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "PDF to Markdown and DOCX conversion powered by Mistral OCR.",
   "type": "module",
   "bin": {
@@ -26,7 +26,8 @@
     "pack:dry-run": "npm pack --dry-run --cache ./.npm-cache",
     "start": "node build/cli.js",
     "test": "npm run build",
-    "verify": "npm test && npm run pack:dry-run"
+    "verify": "npm test && npm run pack:dry-run",
+    "prepublishOnly": "npm run verify"
   },
   "dependencies": {
     "@mistralai/mistralai": "^1.15.1",
@@ -36,5 +37,18 @@
     "@types/node": "^20.14.2",
     "tsx": "^4.7.2",
     "typescript": "^5.4.5"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mistral",
+    "ocr",
+    "pdf",
+    "markdown",
+    "docx",
+    "document-ai",
+    "scanned-pdf"
+  ],
+  "license": "MIT"
 }
