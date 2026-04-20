@@ -185,6 +185,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate release tag
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${PACKAGE_VERSION}" ]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} does not match package version ${PACKAGE_VERSION}. Expected v${PACKAGE_VERSION}."
+            exit 1
+          fi
+
+      - name: Check npm version is unpublished
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
+            echo "::error::${PACKAGE_NAME}@${PACKAGE_VERSION} already exists on npm. Bump package.json before tagging."
+            exit 1
+          fi
+
       - name: Validate before publish
         run: npm run verify
 

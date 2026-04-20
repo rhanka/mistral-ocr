@@ -182,6 +182,23 @@ npm run build
 node build/cli.js --help
 ```
 
+## Release
+
+Publishing is handled by GitHub Actions through npm Trusted Publishing.
+
+Release flow:
+
+```bash
+npm version patch
+git push origin master --follow-tags
+```
+
+The publish job only runs for `v*` tags. Before publishing, CI verifies that:
+
+- the Git tag matches `package.json` exactly, for example `v0.1.1` for version `0.1.1`
+- the package version is not already present on npm
+- `npm run verify` passes
+
 ## Local Tests
 
 For local testing in this workspace, the Mistral key can be loaded from `../top-ai-ideas-fullstack/.env`.
