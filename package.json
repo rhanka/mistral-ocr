@@ -25,7 +25,7 @@
     "build": "rm -rf build && tsc -p tsconfig.json",
     "pack:dry-run": "npm pack --dry-run --cache ./.npm-cache",
     "start": "node build/cli.js",
-    "test": "npm run build",
+    "test": "npm run build && node --test test/*.test.mjs",
     "verify": "npm test && npm run pack:dry-run",
     "prepublishOnly": "npm run verify"
   },

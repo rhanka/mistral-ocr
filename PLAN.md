@@ -9,3 +9,5 @@ This file tracks the completed milestones for turning the original PDF conversio
 - [x] Document installation, CLI usage, library usage, scan-specific behavior, and test fixtures in English.
 - [x] Remove Docker and Make-specific workflows so the project stays a standard npm package.
 - [x] Add npm-based CI for build/type-check and package validation.
+- [x] Add Mistral Batch Inference support for OCR through library helpers and a CLI `batch` command.
+- [x] Add automated batch coverage and a conditional live batch smoke test in CI.

@@ -60,23 +60,27 @@ jobs:
 
       - name: Install from tarball in clean directory
         run: |
-          mkdir /tmp/mistral-ocr-smoke
-          cd /tmp/mistral-ocr-smoke
+          mkdir -p .scratch/mistral-ocr-smoke
+          cd .scratch/mistral-ocr-smoke
           npm init -y --silent
           npm install "${{ github.workspace }}/${{ env.TARBALL }}"
 
       - name: Verify CLI from installed package
         run: |
-          cd /tmp/mistral-ocr-smoke
+          cd .scratch/mistral-ocr-smoke
           npx mistral-ocr --help | grep -q "Usage:"
 
       - name: Verify library exports
         run: |
-          cd /tmp/mistral-ocr-smoke
+          cd .scratch/mistral-ocr-smoke
           node --input-type=module <<'EOF'
           const mod = await import("mistral-ocr");
           const expected = [
             "convertPdf",
+            "convertPdfBatch",
+            "createOcrBatch",
+            "waitForOcrBatch",
+            "listOcrBatchOutputs",
             "markdownToDocx",
             "createMistralClient",
             "buildMarkdownFromOcrResponse",
@@ -93,8 +97,71 @@ jobs:
           console.log("Installed package exports verified");
           EOF
 
+  live-batch-smoke:
+    needs: smoke-test
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    env:
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Skip when MISTRAL_API_KEY is not configured
+        if: env.MISTRAL_API_KEY == ''
+        run: echo "MISTRAL_API_KEY is not configured; skipping live batch OCR smoke."
+
+      - name: Install and build
+        if: env.MISTRAL_API_KEY != ''
+        run: |
+          npm ci
+          npm run build
+
+      - name: Create tiny PDF fixture
+        if: env.MISTRAL_API_KEY != ''
+        run: |
+          mkdir -p .scratch/live-batch
+          node --input-type=module <<'EOF'
+          import { writeFileSync } from "node:fs";
+
+          const objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            "<< /Length 56 >>\nstream\nBT /F1 18 Tf 36 96 Td (Mistral OCR batch smoke) Tj ET\nendstream",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+          ];
+          let pdf = "%PDF-1.4\n";
+          const offsets = [0];
+
+          for (const [index, body] of objects.entries()) {
+            offsets.push(Buffer.byteLength(pdf));
+            pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+          }
+
+          const xrefOffset = Buffer.byteLength(pdf);
+          pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+          for (const offset of offsets.slice(1)) {
+            pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+          }
+          pdf += `trailer\n<< /Root 1 0 R /Size ${objects.length + 1} >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+
+          writeFileSync(".scratch/live-batch/smoke.pdf", pdf);
+          EOF
+
+      - name: Run live batch OCR smoke
+        if: env.MISTRAL_API_KEY != ''
+        run: |
+          node build/cli.js batch .scratch/live-batch/smoke.pdf --output-dir .scratch/live-batch/out --no-docx --no-images --poll-interval 10 --timeout 900
+          test -s .scratch/live-batch/out/smoke.md
+
   publish:
-    needs: [test, smoke-test]
+    needs: [test, smoke-test, live-batch-smoke]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -139,14 +206,14 @@ jobs:
 
       - name: Install from npm
         run: |
-          mkdir /tmp/mistral-ocr-post-publish
-          cd /tmp/mistral-ocr-post-publish
+          mkdir -p .scratch/mistral-ocr-post-publish
+          cd .scratch/mistral-ocr-post-publish
           npm init -y --silent
           npm install mistral-ocr@latest
 
       - name: Verify installed package
         run: |
-          cd /tmp/mistral-ocr-post-publish
+          cd .scratch/mistral-ocr-post-publish
           npx mistral-ocr --help | grep -q "Usage:"
           node --input-type=module <<'EOF'
           const mod = await import("mistral-ocr");

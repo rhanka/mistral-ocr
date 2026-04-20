@@ -1,6 +1,7 @@
 node_modules/
 build/
 .npm-cache/
+.scratch/
 .dist.ro.backup/
 .node_modules.ro.backup/
 .env
