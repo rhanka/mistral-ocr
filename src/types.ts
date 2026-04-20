@@ -25,6 +25,8 @@ export interface ExtractedImage {
   relativePath?: string;
 }
 
+export type MistralBatchJob = Awaited<ReturnType<Mistral['batch']['jobs']['create']>>;
+
 export interface ConvertPdfOptions {
   apiKey?: string;
   client?: Mistral;
@@ -45,6 +47,68 @@ export interface ConvertPdfResult {
   docxPath?: string;
   images: ExtractedImage[];
   ocrResponse: MistralOcrResponse;
+}
+
+export interface OcrBatchFile {
+  customId: string;
+  fileName: string;
+  fileId: string;
+}
+
+export interface CreateOcrBatchOptions {
+  apiKey?: string;
+  client?: Mistral;
+  model?: string;
+  includeImageBase64?: boolean;
+  metadata?: Record<string, string>;
+  logger?: Logger | false;
+}
+
+export interface CreateOcrBatchResult {
+  job: MistralBatchJob;
+  files: OcrBatchFile[];
+}
+
+export interface WaitForOcrBatchOptions {
+  apiKey?: string;
+  client?: Mistral;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+  inline?: boolean;
+  logger?: Logger | false;
+}
+
+export interface OcrBatchOutput {
+  customId: string;
+  response?: MistralOcrResponse;
+  error?: unknown;
+  raw: unknown;
+}
+
+export interface ConvertPdfBatchOptions extends CreateOcrBatchOptions, WaitForOcrBatchOptions {
+  outputDir?: string;
+  generateDocx?: boolean;
+  writeMarkdown?: boolean;
+  writeImages?: boolean;
+  pageSeparator?: string;
+}
+
+export interface ConvertPdfBatchEntry {
+  customId: string;
+  fileName: string;
+  markdown?: string;
+  markdownPath?: string;
+  docxBuffer?: Buffer;
+  docxPath?: string;
+  images: ExtractedImage[];
+  ocrResponse?: MistralOcrResponse;
+  error?: unknown;
+}
+
+export interface ConvertPdfBatchResult {
+  job: MistralBatchJob;
+  files: OcrBatchFile[];
+  entries: ConvertPdfBatchEntry[];
 }
 
 export interface MarkdownToDocxOptions {

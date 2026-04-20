@@ -2,12 +2,19 @@
 
 import * as path from 'node:path';
 
-import { convertPdf, DEFAULT_MODEL } from './index.js';
+import {
+  convertPdf,
+  convertPdfBatch,
+  createOcrBatch,
+  DEFAULT_BATCH_POLL_INTERVAL_MS,
+  DEFAULT_MODEL,
+} from './index.js';
 
 const HELP_TEXT = `mistral-ocr
 
 Usage:
   mistral-ocr convert <input.pdf> [options]
+  mistral-ocr batch <input.pdf...> [options]
   mistral-ocr <input.pdf> [options]
 
 Options:
@@ -20,11 +27,17 @@ Options:
   --no-markdown        Do not write the Markdown file
   --no-docx            Do not generate the DOCX file
   --no-images          Do not write extracted images to disk
+  --no-wait            Batch only: submit the OCR batch job and exit without downloading outputs
+  --poll-interval <s>  Batch only: polling interval in seconds. Default: ${DEFAULT_BATCH_POLL_INTERVAL_MS / 1000}
+  --timeout <s>        Batch only: maximum wait time in seconds. Default: no timeout
   -h, --help           Show this help
 `;
 
+type CliCommand = 'convert' | 'batch';
+
 interface CliOptions {
-  inputPath: string;
+  command: CliCommand;
+  inputPaths: string[];
   outputDir?: string;
   markdownPath?: string;
   docxPath?: string;
@@ -34,6 +47,9 @@ interface CliOptions {
   writeMarkdown: boolean;
   generateDocx: boolean;
   writeImages: boolean;
+  waitForBatch: boolean;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
 }
 
 function fail(message: string): never {
@@ -51,6 +67,14 @@ function shiftValue(args: string[], flag: string): string {
   return value;
 }
 
+function parsePositiveSeconds(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    fail(`${flag} must be a positive number of seconds.`);
+  }
+  return Math.round(parsed * 1000);
+}
+
 function parseCliArgs(argv: string[]): CliOptions {
   const args = [...argv];
   if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
@@ -58,20 +82,34 @@ function parseCliArgs(argv: string[]): CliOptions {
     process.exit(0);
   }
 
+  let command: CliCommand = 'convert';
   if (args[0] === 'convert') {
+    args.shift();
+  } else if (args[0] === 'batch') {
+    command = 'batch';
     args.shift();
   }
 
-  const inputPath = args.shift();
-  if (!inputPath) {
-    fail('A PDF input path is required.');
+  const inputPaths: string[] = [];
+  while (args.length > 0 && !args[0]?.startsWith('-')) {
+    inputPaths.push(args.shift()!);
+  }
+
+  if (inputPaths.length === 0) {
+    fail(command === 'batch' ? 'At least one PDF input path is required.' : 'A PDF input path is required.');
+  }
+
+  if (command === 'convert' && inputPaths.length !== 1) {
+    fail('The convert command accepts exactly one PDF input path. Use batch for multiple inputs.');
   }
 
   const cliOptions: CliOptions = {
-    inputPath,
+    command,
+    inputPaths,
     writeMarkdown: true,
     generateDocx: true,
     writeImages: true,
+    waitForBatch: true,
   };
 
   while (args.length > 0) {
@@ -102,27 +140,43 @@ function parseCliArgs(argv: string[]): CliOptions {
       case '--no-markdown':
         cliOptions.writeMarkdown = false;
         break;
-      case '--no-docx':
-        cliOptions.generateDocx = false;
-        break;
-      case '--no-images':
-        cliOptions.writeImages = false;
-        break;
-      default:
-        fail(`Unknown argument: ${arg}`);
+        case '--no-docx':
+          cliOptions.generateDocx = false;
+          break;
+        case '--no-images':
+          cliOptions.writeImages = false;
+          break;
+        case '--no-wait':
+          cliOptions.waitForBatch = false;
+          break;
+        case '--poll-interval':
+          cliOptions.pollIntervalMs = parsePositiveSeconds(shiftValue(args, arg), arg);
+          break;
+        case '--timeout':
+          cliOptions.timeoutMs = parsePositiveSeconds(shiftValue(args, arg), arg);
+          break;
+        default:
+          fail(`Unknown argument: ${arg}`);
+      }
     }
-  }
 
   if (!cliOptions.writeMarkdown && !cliOptions.generateDocx) {
     fail('At least one output must remain enabled.');
   }
 
+  if (command === 'convert' && (!cliOptions.waitForBatch || cliOptions.pollIntervalMs || cliOptions.timeoutMs)) {
+    fail('Batch-only options require the batch command.');
+  }
+
+  if (command === 'batch' && (cliOptions.markdownPath || cliOptions.docxPath || cliOptions.imagesDir)) {
+    fail('Batch mode writes one output set per input. Use --output-dir instead of --markdown, --docx, or --images-dir.');
+  }
+
   return cliOptions;
 }
 
-async function main(): Promise<void> {
-  const cliOptions = parseCliArgs(process.argv.slice(2));
-  const inputAbsolutePath = path.resolve(cliOptions.inputPath);
+async function runConvert(cliOptions: CliOptions): Promise<void> {
+  const inputAbsolutePath = path.resolve(cliOptions.inputPaths[0]!);
   const inputDir = path.dirname(inputAbsolutePath);
   const baseName = path.basename(inputAbsolutePath, path.extname(inputAbsolutePath));
   const outputDir = path.resolve(cliOptions.outputDir ?? inputDir);
@@ -165,6 +219,62 @@ async function main(): Promise<void> {
   if (imagesDir) {
     console.log(`  Images dir: ${imagesDir}`);
   }
+}
+
+async function runBatch(cliOptions: CliOptions): Promise<void> {
+  const inputAbsolutePaths = cliOptions.inputPaths.map((inputPath) => path.resolve(inputPath));
+  const outputDir = path.resolve(cliOptions.outputDir ?? process.cwd());
+
+  if (!cliOptions.waitForBatch) {
+    const result = await createOcrBatch(inputAbsolutePaths, {
+      apiKey: cliOptions.apiKey,
+      model: cliOptions.model,
+      logger: console,
+    });
+
+    console.log('');
+    console.log('Batch submitted.');
+    console.log(`  Job ID: ${result.job.id}`);
+    console.log(`  Status: ${result.job.status}`);
+    console.log(`  Files: ${result.files.length}`);
+    return;
+  }
+
+  const result = await convertPdfBatch(inputAbsolutePaths, {
+    apiKey: cliOptions.apiKey,
+    model: cliOptions.model,
+    outputDir,
+    generateDocx: cliOptions.generateDocx,
+    writeMarkdown: cliOptions.writeMarkdown,
+    writeImages: cliOptions.writeImages,
+    pollIntervalMs: cliOptions.pollIntervalMs,
+    timeoutMs: cliOptions.timeoutMs,
+    logger: console,
+  });
+
+  const failed = result.entries.filter((entry) => entry.error);
+
+  console.log('');
+  console.log('Batch done.');
+  console.log(`  Job ID: ${result.job.id}`);
+  console.log(`  Status: ${result.job.status}`);
+  console.log(`  Documents: ${result.entries.length}`);
+  console.log(`  Failed: ${failed.length}`);
+  console.log(`  Output dir: ${outputDir}`);
+
+  for (const entry of failed) {
+    console.warn(`  Failed ${entry.fileName}: ${entry.error instanceof Error ? entry.error.message : String(entry.error)}`);
+  }
+}
+
+async function main(): Promise<void> {
+  const cliOptions = parseCliArgs(process.argv.slice(2));
+  if (cliOptions.command === 'batch') {
+    await runBatch(cliOptions);
+    return;
+  }
+
+  await runConvert(cliOptions);
 }
 
 main().catch((error) => {

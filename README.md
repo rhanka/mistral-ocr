@@ -1,6 +1,6 @@
 # mistral-ocr
 
-`mistral-ocr` converts a PDF into Markdown and/or DOCX using `mistral-ocr-latest`.
+`mistral-ocr` converts PDFs into Markdown and/or DOCX using `mistral-ocr-latest`.
 
 The project exposes:
 
@@ -65,6 +65,37 @@ Generate DOCX only:
 npx mistral-ocr convert ./document.pdf --no-markdown
 ```
 
+Batch OCR conversion:
+
+```bash
+npx mistral-ocr batch ./doc-a.pdf ./doc-b.pdf --output-dir ./out
+```
+
+Batch mode uses Mistral's Batch Inference endpoint for OCR, waits for the job by default, then writes one Markdown/DOCX pair per input PDF:
+
+- `./out/doc-a.md`
+- `./out/doc-a.docx`
+- `./out/doc-a-images/`
+- `./out/doc-b.md`
+- `./out/doc-b.docx`
+- `./out/doc-b-images/`
+
+Submit a batch job without waiting for results:
+
+```bash
+npx mistral-ocr batch ./doc-a.pdf ./doc-b.pdf --no-wait
+```
+
+Useful batch options:
+
+```bash
+npx mistral-ocr batch ./doc-a.pdf ./doc-b.pdf \
+  --output-dir ./out \
+  --poll-interval 10 \
+  --timeout 1800 \
+  --no-docx
+```
+
 ## Library Usage
 
 ```ts
@@ -93,6 +124,24 @@ const result = await convertPdf('./document.pdf', {
 console.log(result.markdown);
 ```
 
+Batch API:
+
+```ts
+import { convertPdfBatch, createOcrBatch, waitForOcrBatch } from 'mistral-ocr';
+
+const batch = await convertPdfBatch(['./doc-a.pdf', './doc-b.pdf'], {
+  outputDir: './out',
+  generateDocx: false,
+});
+
+console.log(batch.job.id);
+console.log(batch.entries.map((entry) => entry.markdownPath));
+
+const submitted = await createOcrBatch(['./large-a.pdf', './large-b.pdf']);
+const finished = await waitForOcrBatch(submitted.job.id);
+console.log(finished.status);
+```
+
 ## Scan-Specific Notes
 
 This library follows the format returned by the Mistral OCR API:
@@ -109,12 +158,17 @@ Practical implications:
 
 Official references:
 
-- API OCR Mistral: https://docs.mistral.ai/capabilities/OCR/basic_ocr/
+- API OCR Mistral: https://docs.mistral.ai/capabilities/document_ai/basic_ocr/
+- Mistral Batch Inference: https://docs.mistral.ai/capabilities/batch/
 - latest public benchmark published for Mistral OCR: https://mistral.ai/news/mistral-ocr-3
 
 ## Exported API
 
 - `convertPdf(input, options)`
+- `convertPdfBatch(inputs, options)`
+- `createOcrBatch(inputs, options)`
+- `waitForOcrBatch(jobId, options)`
+- `listOcrBatchOutputs(job, options)`
 - `markdownToDocx(markdown, options)`
 - `createMistralClient(apiKey?)`
 - `buildMarkdownFromOcrResponse(ocrResponse, replacements?)`
@@ -142,10 +196,12 @@ Useful commands:
 
 ```bash
 npm run build
-mkdir -p /tmp/mistral-ocr-tests
-curl -L https://tile.loc.gov/storage-services/public/gdcmassbookdig/newyorkillustrat03newy/newyorkillustrat03newy.pdf -o /tmp/mistral-ocr-tests/new-york-illustrated.pdf
+mkdir -p .scratch/mistral-ocr-tests
+curl -L https://tile.loc.gov/storage-services/public/gdcmassbookdig/newyorkillustrat03newy/newyorkillustrat03newy.pdf -o .scratch/mistral-ocr-tests/new-york-illustrated.pdf
 
-bash -lc 'set -a; source ../top-ai-ideas-fullstack/.env >/dev/null 2>&1; set +a; node build/cli.js convert /tmp/mistral-ocr-tests/new-york-illustrated.pdf --output-dir /tmp/mistral-ocr-tests/new-york-illustrated-out'
+bash -lc 'set -a; source ../top-ai-ideas-fullstack/.env >/dev/null 2>&1; set +a; node build/cli.js convert .scratch/mistral-ocr-tests/new-york-illustrated.pdf --output-dir .scratch/mistral-ocr-tests/new-york-illustrated-out'
 
-bash -lc 'set -a; source ../top-ai-ideas-fullstack/.env >/dev/null 2>&1; set +a; node build/cli.js convert CONTRIBUATION_AI_AERONAUTIQUE.pdf --output-dir /tmp/mistral-ocr-tests/contribution-out'
+bash -lc 'set -a; source ../top-ai-ideas-fullstack/.env >/dev/null 2>&1; set +a; node build/cli.js convert CONTRIBUATION_AI_AERONAUTIQUE.pdf --output-dir .scratch/mistral-ocr-tests/contribution-out'
+
+bash -lc 'set -a; source ../top-ai-ideas-fullstack/.env >/dev/null 2>&1; set +a; node build/cli.js batch CONTRIBUATION_AI_AERONAUTIQUE.pdf .scratch/mistral-ocr-tests/new-york-illustrated.pdf --output-dir .scratch/mistral-ocr-tests/batch-out --no-docx'
 ```
