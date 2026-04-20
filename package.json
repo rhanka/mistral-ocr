@@ -1,6 +1,6 @@
 {
   "name": "mistral-ocr",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "PDF to Markdown and DOCX conversion powered by Mistral OCR.",
   "type": "module",
   "bin": {
