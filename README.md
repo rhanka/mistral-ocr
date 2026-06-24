@@ -1,6 +1,6 @@
 # mistral-ocr
 
-`mistral-ocr` converts PDFs into Markdown and/or DOCX using `mistral-ocr-latest`.
+`mistral-ocr` converts PDFs into Markdown and/or DOCX using Mistral OCR 4 (`mistral-ocr-4-0`) by default.
 
 The project exposes:
 
@@ -50,8 +50,10 @@ npx mistral-ocr convert ./document.pdf \
   --markdown ./out/document.md \
   --docx ./out/document.docx \
   --images-dir ./out/images \
-  --model mistral-ocr-latest
+  --model mistral-ocr-4-0
 ```
+
+Use `--model mistral-ocr-latest` if you explicitly want to follow Mistral's moving latest alias.
 
 Generate Markdown only:
 
@@ -96,6 +98,25 @@ npx mistral-ocr batch ./doc-a.pdf ./doc-b.pdf \
   --no-docx
 ```
 
+OCR 4 options are available in both single-file and batch modes:
+
+```bash
+npx mistral-ocr convert ./document.pdf \
+  --table-format html \
+  --extract-header \
+  --extract-footer \
+  --image-limit 20 \
+  --image-min-size 128
+```
+
+Structured document annotations can be requested with JSON response formats:
+
+```bash
+npx mistral-ocr convert ./document.pdf \
+  --document-annotation-format '{"type":"json_schema","jsonSchema":{"name":"summary","schema":{"type":"object"}}}' \
+  --document-annotation-prompt "Extract a compact document summary."
+```
+
 ## Library Usage
 
 ```ts
@@ -105,6 +126,9 @@ const result = await convertPdf('./document.pdf', {
   markdownPath: './out/document.md',
   docxPath: './out/document.docx',
   imageOutputDir: './out/images',
+  tableFormat: 'html',
+  extractHeader: true,
+  extractFooter: true,
 });
 
 console.log(result.markdown);
@@ -152,7 +176,8 @@ This library follows the format returned by the Mistral OCR API:
 
 Practical implications:
 
-- scanned PDFs, multi-column layouts, tables, figures, and captions are generally handled well by `mistral-ocr-latest`
+- scanned PDFs, multi-column layouts, tables, figures, and captions are generally handled well by `mistral-ocr-4-0`
+- OCR 4 adds explicit controls for table output (`markdown` or `html`), header/footer extraction, image extraction limits, and structured document or bounding-box annotations
 - complex tables, equations, or very rich layouts remain most faithful in the raw Markdown produced by the model
 - DOCX output does not try to perfectly reconstruct the original Word-style layout; it aims to produce a usable document
 
@@ -160,7 +185,7 @@ Official references:
 
 - API OCR Mistral: https://docs.mistral.ai/capabilities/document_ai/basic_ocr/
 - Mistral Batch Inference: https://docs.mistral.ai/capabilities/batch/
-- latest public benchmark published for Mistral OCR: https://mistral.ai/news/mistral-ocr-3
+- Mistral OCR 4 benchmark and release notes: https://mistral.ai/news/ocr-4/
 
 ## Exported API
 

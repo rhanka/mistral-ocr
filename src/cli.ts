@@ -24,6 +24,14 @@ Options:
   --images-dir <dir>   Directory for extracted images. Default: <output-dir>/<basename>-images
   --model <name>       OCR model to use. Default: ${DEFAULT_MODEL}
   --api-key <key>      Override MISTRAL_API_KEY
+  --table-format <fmt> OCR table format: markdown or html
+  --extract-header     Extract page headers separately when supported by the model
+  --extract-footer     Extract page footers separately when supported by the model
+  --image-limit <n>    Maximum number of images returned per document
+  --image-min-size <n> Minimum image size, in pixels, for extracted images
+  --bbox-annotation-format <json>      Structured OCR bounding-box annotation format
+  --document-annotation-format <json>  Structured document annotation format
+  --document-annotation-prompt <text>  Prompt used with document annotation format
   --no-markdown        Do not write the Markdown file
   --no-docx            Do not generate the DOCX file
   --no-images          Do not write extracted images to disk
@@ -50,6 +58,14 @@ interface CliOptions {
   waitForBatch: boolean;
   pollIntervalMs?: number;
   timeoutMs?: number;
+  tableFormat?: 'markdown' | 'html';
+  extractHeader?: boolean;
+  extractFooter?: boolean;
+  imageLimit?: number;
+  imageMinSize?: number;
+  bboxAnnotationFormat?: Record<string, unknown>;
+  documentAnnotationFormat?: Record<string, unknown>;
+  documentAnnotationPrompt?: string;
 }
 
 function fail(message: string): never {
@@ -73,6 +89,34 @@ function parsePositiveSeconds(value: string, flag: string): number {
     fail(`${flag} must be a positive number of seconds.`);
   }
   return Math.round(parsed * 1000);
+}
+
+function parsePositiveInteger(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    fail(`${flag} must be a positive integer.`);
+  }
+  return parsed;
+}
+
+function parseTableFormat(value: string, flag: string): 'markdown' | 'html' {
+  if (value === 'markdown' || value === 'html') {
+    return value;
+  }
+  fail(`${flag} must be either "markdown" or "html".`);
+}
+
+function parseJsonObject(value: string, flag: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Fall through to the uniform CLI error below.
+  }
+
+  fail(`${flag} must be a valid JSON object.`);
 }
 
 function parseCliArgs(argv: string[]): CliOptions {
@@ -137,6 +181,30 @@ function parseCliArgs(argv: string[]): CliOptions {
       case '--api-key':
         cliOptions.apiKey = shiftValue(args, arg);
         break;
+      case '--table-format':
+        cliOptions.tableFormat = parseTableFormat(shiftValue(args, arg), arg);
+        break;
+      case '--extract-header':
+        cliOptions.extractHeader = true;
+        break;
+      case '--extract-footer':
+        cliOptions.extractFooter = true;
+        break;
+      case '--image-limit':
+        cliOptions.imageLimit = parsePositiveInteger(shiftValue(args, arg), arg);
+        break;
+      case '--image-min-size':
+        cliOptions.imageMinSize = parsePositiveInteger(shiftValue(args, arg), arg);
+        break;
+      case '--bbox-annotation-format':
+        cliOptions.bboxAnnotationFormat = parseJsonObject(shiftValue(args, arg), arg);
+        break;
+      case '--document-annotation-format':
+        cliOptions.documentAnnotationFormat = parseJsonObject(shiftValue(args, arg), arg);
+        break;
+      case '--document-annotation-prompt':
+        cliOptions.documentAnnotationPrompt = shiftValue(args, arg);
+        break;
       case '--no-markdown':
         cliOptions.writeMarkdown = false;
         break;
@@ -172,7 +240,24 @@ function parseCliArgs(argv: string[]): CliOptions {
     fail('Batch mode writes one output set per input. Use --output-dir instead of --markdown, --docx, or --images-dir.');
   }
 
+  if (cliOptions.documentAnnotationPrompt && !cliOptions.documentAnnotationFormat) {
+    fail('--document-annotation-prompt requires --document-annotation-format.');
+  }
+
   return cliOptions;
+}
+
+function createOcrOptions(cliOptions: CliOptions) {
+  return {
+    tableFormat: cliOptions.tableFormat,
+    extractHeader: cliOptions.extractHeader,
+    extractFooter: cliOptions.extractFooter,
+    imageLimit: cliOptions.imageLimit,
+    imageMinSize: cliOptions.imageMinSize,
+    bboxAnnotationFormat: cliOptions.bboxAnnotationFormat,
+    documentAnnotationFormat: cliOptions.documentAnnotationFormat,
+    documentAnnotationPrompt: cliOptions.documentAnnotationPrompt,
+  };
 }
 
 async function runConvert(cliOptions: CliOptions): Promise<void> {
@@ -203,6 +288,7 @@ async function runConvert(cliOptions: CliOptions): Promise<void> {
     markdownPath,
     docxPath,
     imageOutputDir: imagesDir,
+    ...createOcrOptions(cliOptions),
     logger: console,
   });
 
@@ -229,6 +315,7 @@ async function runBatch(cliOptions: CliOptions): Promise<void> {
     const result = await createOcrBatch(inputAbsolutePaths, {
       apiKey: cliOptions.apiKey,
       model: cliOptions.model,
+      ...createOcrOptions(cliOptions),
       logger: console,
     });
 
@@ -249,6 +336,7 @@ async function runBatch(cliOptions: CliOptions): Promise<void> {
     writeImages: cliOptions.writeImages,
     pollIntervalMs: cliOptions.pollIntervalMs,
     timeoutMs: cliOptions.timeoutMs,
+    ...createOcrOptions(cliOptions),
     logger: console,
   });
 

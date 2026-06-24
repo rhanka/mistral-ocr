@@ -23,7 +23,7 @@ function createFakeClient() {
         dimensions: { dpi: 200, height: 100, width: 100 },
       },
     ],
-    model: 'mistral-ocr-latest',
+    model: 'mistral-ocr-4-0',
     usageInfo: { pagesProcessed: 1 },
   };
 
@@ -60,7 +60,7 @@ function createFakeClient() {
             id: request.jobId,
             inputFiles: [],
             endpoint: '/v1/ocr',
-            model: 'mistral-ocr-latest',
+            model: 'mistral-ocr-4-0',
             errors: [],
             outputs: [
               {
@@ -97,7 +97,7 @@ test('createOcrBatch submits OCR requests to the Mistral batch endpoint', async 
   assert.equal(result.files[0].fileName, 'sample.pdf');
   assert.equal(uploads[0].purpose, 'ocr');
   assert.equal(createdJobs[0].endpoint, '/v1/ocr');
-  assert.equal(createdJobs[0].model, 'mistral-ocr-latest');
+  assert.equal(createdJobs[0].model, 'mistral-ocr-4-0');
   assert.deepEqual(createdJobs[0].requests[0], {
     customId: '0',
     body: {
@@ -107,6 +107,78 @@ test('createOcrBatch submits OCR requests to the Mistral batch endpoint', async 
       },
       include_image_base64: true,
     },
+  });
+});
+
+test('createOcrBatch forwards OCR 4 options to batch request bodies', async () => {
+  const tmp = await createWorkspaceTemp('batch-options-');
+  const pdfPath = path.join(tmp, 'sample.pdf');
+  await writeFile(pdfPath, Buffer.from('%PDF-1.4\n% test\n'));
+
+  const { client, createdJobs } = createFakeClient();
+  await createOcrBatch([pdfPath], {
+    client,
+    logger: false,
+    tableFormat: 'html',
+    extractHeader: true,
+    extractFooter: true,
+    imageLimit: 12,
+    imageMinSize: 128,
+    documentAnnotationPrompt: 'Extract the document summary.',
+    documentAnnotationFormat: {
+      type: 'json_schema',
+      jsonSchema: {
+        name: 'summary',
+        schema: {
+          type: 'object',
+          properties: { title: { type: 'string' } },
+          required: ['title'],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    },
+    bboxAnnotationFormat: {
+      type: 'json_schema',
+      jsonSchema: {
+        name: 'bbox',
+        schema: { type: 'object' },
+      },
+    },
+  });
+
+  assert.deepEqual(createdJobs[0].requests[0].body, {
+    document: {
+      type: 'file',
+      file_id: 'file-1',
+    },
+    include_image_base64: true,
+    image_limit: 12,
+    image_min_size: 128,
+    bbox_annotation_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'bbox',
+        schema: { type: 'object' },
+      },
+    },
+    document_annotation_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'summary',
+        schema: {
+          type: 'object',
+          properties: { title: { type: 'string' } },
+          required: ['title'],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    },
+    document_annotation_prompt: 'Extract the document summary.',
+    table_format: 'html',
+    extract_header: true,
+    extract_footer: true,
   });
 });
 

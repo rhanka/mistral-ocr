@@ -3,9 +3,9 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { markdownToDocx } from './docx.js';
-import type { ConvertPdfOptions, ConvertPdfResult, ExtractedImage, Logger, PdfInput } from './types.js';
+import type { ConvertPdfOptions, ConvertPdfResult, ExtractedImage, Logger, OcrProcessingOptions, PdfInput } from './types.js';
 
-export const DEFAULT_MODEL = 'mistral-ocr-latest';
+export const DEFAULT_MODEL = 'mistral-ocr-4-0';
 export const DEFAULT_PAGE_SEPARATOR = '\n\n---\n\n';
 
 const DEFAULT_PDF_FILE_NAME = 'document.pdf';
@@ -204,6 +204,22 @@ export function createMistralClient(apiKey = process.env.MISTRAL_API_KEY): Mistr
   return new Mistral({ apiKey });
 }
 
+export function buildOcrProcessOptions(options: OcrProcessingOptions): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries({
+      includeImageBase64: options.includeImageBase64 ?? true,
+      imageLimit: options.imageLimit,
+      imageMinSize: options.imageMinSize,
+      bboxAnnotationFormat: options.bboxAnnotationFormat,
+      documentAnnotationFormat: options.documentAnnotationFormat,
+      documentAnnotationPrompt: options.documentAnnotationPrompt,
+      tableFormat: options.tableFormat,
+      extractHeader: options.extractHeader,
+      extractFooter: options.extractFooter,
+    }).filter(([, value]) => value !== undefined),
+  );
+}
+
 export async function convertPdf(
   input: PdfInput,
   options: ConvertPdfOptions = {},
@@ -234,7 +250,7 @@ export async function convertPdf(
       type: 'file',
       fileId: uploaded.id,
     },
-    includeImageBase64: true,
+    ...buildOcrProcessOptions(options),
   });
 
   logger.log('[3/4] Building Markdown and extracting images...');

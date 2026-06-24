@@ -12,6 +12,25 @@ export type PdfInput =
 
 export type MistralOcrResponse = Awaited<ReturnType<Mistral['ocr']['process']>>;
 
+export type OcrTableFormat = 'markdown' | 'html';
+
+export interface OcrResponseFormat {
+  type?: 'text' | 'json_object' | 'json_schema';
+  jsonSchema?: unknown;
+}
+
+export interface OcrProcessingOptions {
+  includeImageBase64?: boolean;
+  imageLimit?: number;
+  imageMinSize?: number;
+  bboxAnnotationFormat?: OcrResponseFormat | null;
+  documentAnnotationFormat?: OcrResponseFormat | null;
+  documentAnnotationPrompt?: string | null;
+  tableFormat?: OcrTableFormat | null;
+  extractHeader?: boolean;
+  extractFooter?: boolean;
+}
+
 export interface Logger {
   log(message: string): void;
   warn?(message: string): void;
@@ -27,7 +46,7 @@ export interface ExtractedImage {
 
 export type MistralBatchJob = Awaited<ReturnType<Mistral['batch']['jobs']['create']>>;
 
-export interface ConvertPdfOptions {
+export interface ConvertPdfOptions extends OcrProcessingOptions {
   apiKey?: string;
   client?: Mistral;
   model?: string;
@@ -55,11 +74,10 @@ export interface OcrBatchFile {
   fileId: string;
 }
 
-export interface CreateOcrBatchOptions {
+export interface CreateOcrBatchOptions extends OcrProcessingOptions {
   apiKey?: string;
   client?: Mistral;
   model?: string;
-  includeImageBase64?: boolean;
   metadata?: Record<string, string>;
   logger?: Logger | false;
 }

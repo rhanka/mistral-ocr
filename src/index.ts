@@ -28,8 +28,11 @@ export type {
   MarkdownToDocxOptions,
   MistralBatchJob,
   MistralOcrResponse,
+  OcrProcessingOptions,
   OcrBatchFile,
   OcrBatchOutput,
+  OcrResponseFormat,
+  OcrTableFormat,
   PdfInput,
   WaitForOcrBatchOptions,
 } from './types.js';

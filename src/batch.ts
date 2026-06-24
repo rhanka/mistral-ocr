@@ -122,6 +122,42 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function toApiResponseFormat(format: CreateOcrBatchOptions['documentAnnotationFormat']): unknown {
+  if (!format || typeof format !== 'object') {
+    return format;
+  }
+
+  const { jsonSchema, ...rest } = format;
+  if (jsonSchema === undefined) {
+    return rest;
+  }
+
+  return {
+    ...rest,
+    json_schema: jsonSchema,
+  };
+}
+
+function buildBatchOcrBody(fileId: string, options: CreateOcrBatchOptions): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries({
+      document: {
+        type: 'file',
+        file_id: fileId,
+      },
+      include_image_base64: options.includeImageBase64 ?? true,
+      image_limit: options.imageLimit,
+      image_min_size: options.imageMinSize,
+      bbox_annotation_format: toApiResponseFormat(options.bboxAnnotationFormat),
+      document_annotation_format: toApiResponseFormat(options.documentAnnotationFormat),
+      document_annotation_prompt: options.documentAnnotationPrompt,
+      table_format: options.tableFormat,
+      extract_header: options.extractHeader,
+      extract_footer: options.extractFooter,
+    }).filter(([, value]) => value !== undefined),
+  );
+}
+
 function isTerminalBatchStatus(status: string): boolean {
   return TERMINAL_BATCH_STATUSES.has(status);
 }
@@ -292,7 +328,6 @@ export async function createOcrBatch(
   const logger = getLogger(options.logger);
   const client = options.client ?? createMistralClient(options.apiKey);
   const model = options.model ?? DEFAULT_MODEL;
-  const includeImageBase64 = options.includeImageBase64 ?? true;
   const files: OcrBatchFile[] = [];
 
   logger.log(`[1/2] Uploading ${inputs.length} PDF file(s) to Mistral...`);
@@ -317,13 +352,7 @@ export async function createOcrBatch(
   const job = await client.batch.jobs.create({
     requests: files.map((file) => ({
       customId: file.customId,
-      body: {
-        document: {
-          type: 'file',
-          file_id: file.fileId,
-        },
-        include_image_base64: includeImageBase64,
-      },
+      body: buildBatchOcrBody(file.fileId, options),
     })),
     model,
     endpoint: '/v1/ocr',
