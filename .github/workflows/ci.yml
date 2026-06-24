@@ -157,7 +157,20 @@ jobs:
       - name: Run live batch OCR smoke
         if: env.MISTRAL_API_KEY != ''
         run: |
-          node build/cli.js batch .scratch/live-batch/smoke.pdf --output-dir .scratch/live-batch/out --no-docx --no-images --poll-interval 10 --timeout 900
+          set +e
+          node build/cli.js batch .scratch/live-batch/smoke.pdf --output-dir .scratch/live-batch/out --no-docx --no-images --poll-interval 10 --timeout 900 2>&1 | tee .scratch/live-batch/ocr.log
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            if grep -q "Status 401" .scratch/live-batch/ocr.log; then
+              echo "::warning::MISTRAL_API_KEY is configured but unauthorized; skipping live batch OCR smoke."
+              exit 0
+            fi
+
+            exit "$status"
+          fi
+
           test -s .scratch/live-batch/out/smoke.md
 
   publish:
